@@ -1,0 +1,62 @@
+F:\conda_envs\koopman_robot\lib\site-packages\qpsolvers\conversions\ensure_sparse_matrices.py:28: SparseConversionWarning: Converted matrix 'P' of your problem to scipy.sparse.csc_matrix to pass it to solver 'osqp'; for best performance, build your matrix as a csc_matrix directly.
+  warnings.warn(
+========================================================================
+人形机器人数据驱动控制 -- 开发环境自检
+MuJoCo 仿真  +  Koopman 算子 / 凸优化预测控制
+========================================================================
+
+========================================================================
+[1/4] 运行环境信息
+========================================================================
+操作系统        : Windows 11 (build 10.0.26200) (AMD64)
+Python 版本     : 3.10.21
+解释器路径      : F:\conda_envs\koopman_robot\python.exe
+环境根目录      : F:\conda_envs\koopman_robot
+是否为 conda 环境 : 是 (存在 conda-meta)
+是否 koopman_robot 环境 : 是
+
+========================================================================
+[2/4] 核心依赖导入与版本
+========================================================================
+[ OK ] numpy      : 2.2.6          (科学计算基础)
+[ OK ] scipy      : 1.15.3         (科学计算 / 线性代数 / ODE)
+[ OK ] matplotlib : 3.10.9         (绘图与可视化)
+[ OK ] torch      : 2.14.0+cpu     (深度学习 / 自动微分)
+[ OK ] mujoco     : 3.14.0         (机器人物理仿真引擎)
+[ OK ] cvxpy      : 1.7.5          (凸优化建模（DCP）)
+[ OK ] osqp       : 1.1.3          (二次规划求解器（ADMM）)
+[ OK ] qpsolvers  : 4.13.0         (QP 求解器统一接口)
+
+共需检查 8 个依赖，成功导入 8 个。
+
+========================================================================
+[3/4] 功能性冒烟测试
+========================================================================
+[PASS] MuJoCo 物理仿真
+       单摆模型加载成功 (nq=1, nv=1, nbody=2)；仿真 500 步后 qpos 由 +0.0000 摆动到 +2.8523 rad
+[PASS] SciPy 数值计算
+       expm(90deg 旋转) 误差=0.00e+00；solve_ivp 简谐振子一周期回归误差=7.59e-11
+[PASS] Matplotlib 绘图
+       Agg 后端渲染成功，画布 RGBA 缓冲 300 字节，当前后端=Agg
+[PASS] PyTorch 张量计算
+       (4x5)@(5x3) -> (4, 3)；反传 d(x^3)/dx=12.0000 (期望 12)；线程数=8；CUDA 可用=False
+[PASS] CVXPY + OSQP 凸优化
+       状态=optimal，最优解 x=[-0.5  0.5]（解析解 [-0.5, 0.5]），目标值=-0.750000
+[PASS] qpsolvers 二次规划
+       使用求解器=osqp，解 x=[-0.5  0.5]，与cvxpy 结果的最大偏差=1.46e-09；qpsolvers 可用后端=[clarabel, osqp, scs]
+
+========================================================================
+[4/4] 验证汇总
+========================================================================
+  [PASS]  MuJoCo 物理仿真
+  [PASS]  SciPy 数值计算
+  [PASS]  Matplotlib 绘图
+  [PASS]  PyTorch 张量计算
+  [PASS]  CVXPY + OSQP 凸优化
+  [PASS]  qpsolvers 二次规划
+
+依赖导入情况: 8/8 个依赖导入成功
+冒烟测试情况: 6/6 项测试通过
+
+>>> 环境验证成功：全部依赖可用，MuJoCo 仿真与凸优化 QP 求解均已跑通。
+>>> 现在可以开始人形机器人数据驱动控制（Koopman 算子 + 凸优化预测控制）的开发。
