@@ -1,10 +1,11 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""stand_pd.py -- Unitree G1 关节 PD 站立控制器（无头仿真）
+"""stand_pd.py -- Unitree G1 关节 PD 站立控制器（支持无头仿真与被动可视化窗口）
 
 用途：
-    Task A1。加载 G1 的 MuJoCo 场景（assets/g1/scene.xml，含地面），
+    Task A1 & A2。加载 G1 的 MuJoCo 场景（assets/g1/scene.xml，含地面），
     用最简单的关节级 PD 控制让机器人在地面上站直，不做任何前馈/补偿。
+    支持无头纯数值仿真（默认）与 MuJoCo 原生被动可视化窗口（--viewer）。
 
     控制律（只驱动关节，浮动基不控）：
         tau = kp * (q_des - q) - kd * qvel
@@ -20,10 +21,11 @@
 
 用法：
     F:\\conda_envs\\koopman_robot\\python.exe stand_pd.py
-    F:\\conda_envs\\koopman_robot\\python.exe stand_pd.py --kp 100 --kd 2 --duration 10
+    F:\\conda_envs\\koopman_robot\\python.exe stand_pd.py --kp 200 --kd 5 --duration 10
+    F:\\conda_envs\\koopman_robot\\python.exe stand_pd.py --kp 200 --kd 5 --duration 10 --viewer
 
-作者：Cline 生成（豆包按 Task A1 任务书编写）
-日期：2026-10-13
+作者：Cline 生成（按 Task A1/A2 任务书编写）
+日期：2026-10-14
 
 调参现象记录（实测，mujoco 3.14，keyframe='stand'，dt=0.002，无 viewer）：
     - kp=100, kd=2（脚本默认值，任务书指定起点）：前约 2 秒直立
@@ -50,9 +52,11 @@ from __future__ import annotations
 
 import argparse
 import sys
+import time
 from pathlib import Path
 
 import mujoco
+import mujoco.viewer
 import numpy as np
 from scipy.spatial.transform import Rotation
 
@@ -189,7 +193,7 @@ def joint_name(model: mujoco.MjModel, actuator_index: int) -> str:
 # --------------------------------------------------------------------------- #
 
 
-def run_pd(kp: float, kd: float, duration: float) -> int:
+def run_pd(kp: float, kd: float, duration: float, use_viewer: bool = False) -> int:
     """加载模型并执行 PD 站立仿真，返回进程退出码。"""
     model, data = load_model_and_data()
     qpos0 = get_keyframe_qpos(model)
@@ -209,11 +213,14 @@ def run_pd(kp: float, kd: float, duration: float) -> int:
     n_steps = int(round(duration / dt))
     print_interval = max(1, int(round(PRINT_INTERVAL_S / dt)))
 
+    mode_str = "被动可视化窗口 (Viewer)" if use_viewer else "无头纯数值模式"
     print(LINE)
-    print("[PD 控制]")
-    print(f"  kp={kp:.4f}  kd={kd:.4f}  时长={duration:.4f} s  "
+    print(f"[PD 控制] 运行模式: {mode_str}")
+    print(f"  kp={kp:.4f}  kd={kd:.4f}  设定时长={duration:.4f} s  "
           f"步数={n_steps}  (关节数={n_joint})")
     print(f"  控制律: tau = kp*(q_des - q) - kd*qvel，写入 data.ctrl")
+    if use_viewer:
+        print("  提示: 可视化窗口已开启，按 ESC 或直接关闭窗口可提前退出仿真。")
     print(LINE)
     print(f"  {'t(s)':>6}  {'base_z(m)':>10}  {'tilt(deg)':>10}  {'|tau|max':>10}")
 
@@ -221,8 +228,9 @@ def run_pd(kp: float, kd: float, duration: float) -> int:
     min_base_z = float(data.qpos[2])
     last_tau_max = 0.0
 
-    for step in range(n_steps):
-        # 读取当前关节状态（浮动基不在这些地址里，不会被控制）
+    def step_controller() -> bool:
+        """执行单步 PD 控制与物理步进。若出现 NaN 返回 False，否则 True。"""
+        nonlocal min_base_z, last_tau_max, has_nan
         q = data.qpos[qpos_adr]
         dq = data.qvel[dof_adr]
 
@@ -232,37 +240,66 @@ def run_pd(kp: float, kd: float, duration: float) -> int:
 
         mujoco.mj_step(model, data)
 
-        # 数值健康检查（每步开销很小，出现 NaN/Inf 立即终止）
+        # 数值健康检查
         if not (np.isfinite(data.qpos).all()
                 and np.isfinite(data.qvel).all()
                 and np.isfinite(data.ctrl).all()):
             has_nan = True
             print(f"  [警告] t={data.time:.4f} s 出现 NaN/Inf，提前终止仿真。")
-            break
+            return False
 
         min_base_z = min(min_base_z, float(data.qpos[2]))
         last_tau_max = float(np.max(np.abs(tau)))
+        return True
 
-        if (step + 1) % print_interval == 0:
-            tilt = base_tilt_deg(data.qpos[3:7])
-            print(f"  {data.time:6.2f}  {data.qpos[2]:10.4f}  "
-                  f"{tilt:10.4f}  {last_tau_max:10.4f}")
+    if use_viewer:
+        with mujoco.viewer.launch_passive(model, data) as viewer:
+            step_count = 0
+            while viewer.is_running() and data.time < duration:
+                step_start = time.perf_counter()
+
+                if not step_controller():
+                    break
+
+                step_count += 1
+                if step_count % print_interval == 0:
+                    tilt = base_tilt_deg(data.qpos[3:7])
+                    print(f"  {data.time:6.2f}  {data.qpos[2]:10.4f}  "
+                          f"{tilt:10.4f}  {last_tau_max:10.4f}")
+
+                viewer.sync()
+
+                # 保持仿真时间与现实物理时间 1.0x 对齐
+                time_until_next = dt - (time.perf_counter() - step_start)
+                if time_until_next > 0:
+                    time.sleep(time_until_next)
+    else:
+        for step in range(n_steps):
+            if not step_controller():
+                break
+
+            if (step + 1) % print_interval == 0:
+                tilt = base_tilt_deg(data.qpos[3:7])
+                print(f"  {data.time:6.2f}  {data.qpos[2]:10.4f}  "
+                      f"{tilt:10.4f}  {last_tau_max:10.4f}")
 
     print_report(model, data, q_des, qpos_adr, dof_adr,
-                kp, kd, duration, has_nan, min_base_z)
+                 kp, kd, duration, has_nan, min_base_z, use_viewer)
     return 0
 
 
 def print_report(model: mujoco.MjModel, data: mujoco.MjData,
                  q_des: np.ndarray, qpos_adr: np.ndarray, dof_adr: np.ndarray,
                  kp: float, kd: float, duration: float,
-                 has_nan: bool, min_base_z: float) -> None:
+                 has_nan: bool, min_base_z: float,
+                 use_viewer: bool = False) -> None:
     """仿真结束后打印验收报告。"""
     q_final = data.qpos[qpos_adr]
     err = np.abs(q_des - q_final)
     i_max = int(np.argmax(err))
     final_z = float(data.qpos[2])
     final_tilt = base_tilt_deg(data.qpos[3:7])
+    sim_time = float(data.time)
 
     # A4 关注的左腿三个关键关节
     key_joints = ["left_hip_pitch_joint", "left_knee_joint",
@@ -270,8 +307,9 @@ def print_report(model: mujoco.MjModel, data: mujoco.MjData,
     name_to_idx = {joint_name(model, i): i for i in range(model.nu)}
 
     print(LINE)
-    print("[仿真结果报告]")
-    print(f"  参数            : kp={kp:.4f}, kd={kd:.4f}, 时长={duration:.4f} s")
+    print(f"[仿真结果报告] ({'带 Viewer 窗口' if use_viewer else '无头模式'})")
+    print(f"  参数            : kp={kp:.4f}, kd={kd:.4f}, "
+          f"实跑时长={sim_time:.4f} s (设定={duration:.4f} s)")
     print(f"  最终基座高度 z  : {final_z:.4f} m   "
           f"(全程最小 {min_base_z:.4f} m)")
     print(f"  最终基座倾角    : {final_tilt:.4f} 度 (0 度为完全竖直)")
@@ -316,14 +354,14 @@ def print_report(model: mujoco.MjModel, data: mujoco.MjData,
 
     print()
     if stable:
-        print("  结论: >>> 物理上稳定站立，A1 达成（请结合上方参考区间确认）。")
+        print("  结论: >>> 物理上稳定站立，A1/A2 达成（请结合上方参考区间确认）。")
     else:
         print("  结论: >>> 未稳定站立（可能下蹲/坐地/劈叉/摔倒）。")
         print("        不要直接改脚本默认值，先用命令行调参，例如：")
         print("        python stand_pd.py --kp 200 --kd 5")
         print("        （kp 不够会软、下蹲；kd 不够会晃、震荡。）")
     print(LINE)
-    print("[Task A1 完成] 请用户验收后再继续 A2")
+    print("[Task A2 完成] 请用户验收后再继续 A3")
 
 
 # --------------------------------------------------------------------------- #
@@ -333,13 +371,15 @@ def print_report(model: mujoco.MjModel, data: mujoco.MjData,
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Unitree G1 关节 PD 站立控制器（无头，Task A1）")
+        description="Unitree G1 关节 PD 站立控制器（Task A1 & A2）")
     parser.add_argument("--kp", type=float, default=KP,
                         help=f"关节比例增益（默认 {KP}）")
     parser.add_argument("--kd", type=float, default=KD,
                         help=f"关节阻尼增益（默认 {KD}）")
     parser.add_argument("--duration", type=float, default=SIM_DURATION,
                         help=f"仿真时长秒数（默认 {SIM_DURATION}）")
+    parser.add_argument("--viewer", action="store_true", default=False,
+                        help="是否开启 MuJoCo 被动可视化窗口（Task A2，默认关闭）")
     return parser.parse_args()
 
 
@@ -351,7 +391,7 @@ def main() -> int:
         pass
 
     args = parse_args()
-    return run_pd(kp=args.kp, kd=args.kd, duration=args.duration)
+    return run_pd(kp=args.kp, kd=args.kd, duration=args.duration, use_viewer=args.viewer)
 
 
 if __name__ == "__main__":
