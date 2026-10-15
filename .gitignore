@@ -54,3 +54,8 @@ wandb/
 # 本项目只依赖 assets/g1（已内置）。如需其他机器人，请自行 clone:
 #   git clone https://github.com/google-deepmind/mujoco_menagerie
 /_temp_menagerie/
+
+# --------------------------- Markdown 文档与任务笔记 ------------------------
+*.md
+!README.md
+
