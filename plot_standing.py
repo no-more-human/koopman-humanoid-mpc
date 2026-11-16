@@ -12,7 +12,6 @@
     F:\\conda_envs\\koopman_robot\\python.exe plot_standing.py logs/standing_kp200_kd5.npz
     F:\\conda_envs\\koopman_robot\\python.exe plot_standing.py  # 自动选择 logs/ 下最新的 npz
 
-作者：Cline 生成（按 Task A4 任务书编写）
 日期：2026-10-15
 """
 

@@ -26,7 +26,6 @@
     F:\\conda_envs\\koopman_robot\\python.exe stand_pd.py --kp 200 --kd 5 --duration 10 --viewer
     F:\\conda_envs\\koopman_robot\\python.exe stand_pd.py --kp 200 --kd 5 --duration 10 --no-save
 
-作者：Cline 生成（按 Task A1/A2/A3 任务书编写）
 日期：2026-10-15
 
 调参现象记录（实测，mujoco 3.14，keyframe='stand'，dt=0.002，无 viewer）：
